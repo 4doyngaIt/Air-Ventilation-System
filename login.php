@@ -19,7 +19,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
         if($password === $user['password']){
             $_SESSION['user_id'] = $user['user_id'];
             $_SESSION['username'] = $user['username'];
-            header("Location: dashboard.php");
+            // Dashboard path: app/user/dashboard.php
+            header("Location: app/user/dashboard.php");
             exit();
         } else {
             $error = "Invalid password.";

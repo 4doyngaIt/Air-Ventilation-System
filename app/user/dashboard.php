@@ -1,14 +1,16 @@
 <?php
 session_start();
-include "config/db.php";
 
-// Redirect if not logged in
+// Include DB from config folder
+include "../../config/db.php"; // relative path from app/user to config
+
+// Redirect to login if not logged in
 if(!isset($_SESSION['user_id'])){
-    header("Location: login.php");
+    header("Location: ../../login.php"); // relative path
     exit();
 }
 
-// Get user info
+// Fetch user info
 $user_id = $_SESSION['user_id'];
 $stmt = $conn->prepare("SELECT username, role FROM users WHERE user_id=?");
 $stmt->bind_param("i", $user_id);

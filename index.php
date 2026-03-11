@@ -1,9 +1,10 @@
 <?php
 session_start();
 
-// If logged in → dashboard, else → login
+// Redirect based on login
 if(isset($_SESSION['user_id'])){
-    header("Location: dashboard.php");
+    // Dashboard path inside app/user
+    header("Location: app/user/dashboard.php");
     exit();
 } else {
     header("Location: login.php");
