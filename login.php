@@ -1,26 +1,36 @@
 <?php
 session_start();
-include "config/db.php";
+include "config/db.php"; // make sure this path is correct
 
 $error = "";
 
 if($_SERVER['REQUEST_METHOD'] == 'POST'){
-    $email = $_POST['email'];
-    $password = $_POST['password'];
+    $email = trim($_POST['email']);
+    $password = trim($_POST['password']);
 
-    $stmt = $conn->prepare("SELECT user_id, username, password FROM users WHERE email=?");
+    // include 'role' in query
+    $stmt = $conn->prepare("SELECT user_id, username, password, role FROM users WHERE email=?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
 
-    if($result->num_rows == 1){
+    if($result->num_rows === 1){
         $user = $result->fetch_assoc();
-        // NOTE: For production, use password_hash & password_verify
+
+        // plain text password check (for now)
         if($password === $user['password']){
             $_SESSION['user_id'] = $user['user_id'];
             $_SESSION['username'] = $user['username'];
-            // Dashboard path: app/user/dashboard.php
-            header("Location: app/user/dashboard.php");
+            $_SESSION['role'] = $user['role'];
+
+            // redirect based on role
+            if($user['role'] === 'admin'){
+                header("Location: app/admin/dashboard.php");
+            } elseif($user['role'] === 'manager'){
+                header("Location: app/user/dashboard.php"); // or create manager dashboard
+            } else {
+                header("Location: app/user/dashboard.php");
+            }
             exit();
         } else {
             $error = "Invalid password.";
@@ -30,7 +40,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
