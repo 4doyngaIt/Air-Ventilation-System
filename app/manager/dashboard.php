@@ -1,125 +1,297 @@
 <?php
 session_start();
-include "../config/db.php"; // adjust path to your config
 
-// Check if user is logged in and role is manager
-if(!isset($_SESSION['role']) || $_SESSION['role'] != 'manager'){
-    header("Location: ../login.php");
-    exit();
+ unset($_SESSION['sensors']);
+
+// ───────────── INITIAL SENSOR DATA ─────────────
+if (!isset($_SESSION['sensors'])) {
+    $_SESSION['sensors'] = [
+        [
+            'id' => 1,
+            'name' => 'Alae Sensor',
+            'lat' => 8.4210,
+            'lng' => 124.8490,
+            'temperature' => 24,
+            'humidity' => 55,
+            'status' => 'Active',
+            'power' => 'ON',
+            'last_updated' => date('Y-m-d H:i:s')
+        ],
+        [
+            'id' => 2,
+            'name' => 'Damilag Sensor',
+            'lat' => 8.3698,
+            'lng' => 124.8547,
+            'temperature' => 24,
+            'humidity' => 55,
+            'status' => 'Active',
+            'power' => 'ON',
+            'last_updated' => date('Y-m-d H:i:s')
+        ],
+        [
+            'id' => 3,
+            'name' => 'Tankulan Sensor',
+            'lat' => 8.3541,
+            'lng' => 124.8672,
+            'temperature' => 24,
+            'humidity' => 55,
+            'status' => 'Active',
+            'power' => 'ON',
+            'last_updated' => date('Y-m-d H:i:s')
+        ],
+    ];
+}
+$sensors = &$_SESSION['sensors'];
+
+// ───────────── UPDATE SENSOR READINGS ─────────────
+foreach ($sensors as &$sensor) {
+    if ($sensor['power'] === 'ON' && $sensor['status'] === 'Active') {
+        // Validate numeric before updating
+        if (!is_numeric($sensor['temperature'])) $sensor['temperature'] = 24;
+        if (!is_numeric($sensor['humidity'])) $sensor['humidity'] = 55;
+
+        $sensor['temperature'] += rand(-1, 1);
+        $sensor['humidity'] += rand(-2, 2);
+        $sensor['last_updated'] = date('Y-m-d H:i:s');
+    }
 }
 
-// Fetch all sensors with latest readings
-$sensors_sql = "
-SELECT s.sensor_id, s.sensor_name, s.sensor_type, s.location, s.status,
-       ar.temperature, ar.humidity, ar.co2_level, ar.air_quality_index, ar.raining, ar.recorded_at
-FROM sensors s
-LEFT JOIN air_readings ar ON s.sensor_id = ar.sensor_id
-WHERE ar.recorded_at = (SELECT MAX(recorded_at) FROM air_readings WHERE sensor_id = s.sensor_id)
-";
-$sensors_result = $conn->query($sensors_sql);
-?>
+// ───────────── HANDLE TOGGLE POWER ─────────────
+if (isset($_POST['toggle'])) {
+    $id = (int)$_POST['id'];
+    foreach ($sensors as &$sensor) {
+        if ($sensor['id'] === $id) {
+            $sensor['power'] = ($sensor['power'] === 'ON') ? 'OFF' : 'ON';
+            $sensor['last_updated'] = date('Y-m-d H:i:s');
+            break; // stop loop when found
+        }
+    }
+}
 
+// ───────────── HANDLE MALFUNCTION TOGGLE ─────────────
+if (isset($_POST['malfunction'])) {
+    $id = (int)$_POST['id'];
+    foreach ($sensors as &$sensor) {
+        if ($sensor['id'] === $id) {
+            $sensor['status'] = ($sensor['status'] === 'Active') ? 'Malfunction' : 'Active';
+            if ($sensor['status'] === 'Active') {
+                if (!is_numeric($sensor['temperature'])) $sensor['temperature'] = 24;
+                if (!is_numeric($sensor['humidity'])) $sensor['humidity'] = 55;
+            }
+            $sensor['last_updated'] = date('Y-m-d H:i:s');
+            break; // stop loop when found
+        }
+    }
+}
+
+// ───────────── HANDLE ALERTS ─────────────
+if (!isset($_SESSION['alerts'])) {
+    $_SESSION['alerts'] = [];
+}
+$alerts = &$_SESSION['alerts'];
+
+if (isset($_POST['send_alert'])) {
+    $id = (int)$_POST['id'];
+    foreach ($sensors as $sensor) {
+        if ($sensor['id'] === $id) {
+            $alerts[] = "Alert sent for sensor: " . htmlspecialchars($sensor['name']) . " at " . date('Y-m-d H:i:s');
+            break; // stop loop when found
+        }
+    }
+}
+
+// ───────────── PAGE SECTION ─────────────
+$section = $_GET['section'] ?? 'home';
+?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <title>Manager Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+    <meta charset="UTF-8" />
+    <title>PHP Climate Dashboard - Manolo Fortich</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            margin:0; padding:0; background:#f4f4f4;
+            font-family: Arial;
+            margin: 0;
+            display: flex;
+            background: #f4f7f9;
         }
-        header { background:#2c3e50; color:#fff; padding:15px; text-align:center; }
-        .container { padding:20px; }
-        table { width:100%; border-collapse: collapse; margin-bottom:20px; }
-        th, td { border:1px solid #ccc; padding:10px; text-align:center; }
-        th { background:#34495e; color:#fff; }
-        .status-active { color: green; font-weight:bold; }
-        .status-inactive { color: red; font-weight:bold; }
-        .map-container { height:400px; margin-bottom:20px; border:1px solid #ccc; }
-        button { padding:5px 10px; margin:2px; cursor:pointer; }
-        .btn-edit { background:#2980b9; color:#fff; border:none; }
-        .btn-delete { background:#c0392b; color:#fff; border:none; }
-        .btn-toggle { background:#27ae60; color:#fff; border:none; }
+
+        .sidebar {
+            width: 200px;
+            background: #0077cc;
+            color: white;
+            height: 100vh;
+            padding-top: 20px;
+            flex-shrink: 0;
+        }
+
+        .sidebar a {
+            display: block;
+            padding: 15px;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .sidebar a:hover {
+            background: #005fa3;
+        }
+
+        .main {
+            flex: 1;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #0077cc;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+
+        th {
+            background: #0077cc;
+            color: white;
+        }
+
+        button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .on {
+            background: green;
+            color: white;
+        }
+
+        .off {
+            background: red;
+            color: white;
+        }
+
+        .alert-btn {
+            background: orange;
+            color: white;
+        }
+
+        .malf-btn {
+            background: #cc0000;
+            color: white;
+        }
+
+        .alert {
+            background: #ffdddd;
+            border-left: 5px solid red;
+            padding: 10px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .map-box {
+            margin-top: 10px;
+        }
+
+        iframe {
+            width: 100%;
+            height: 250px;
+            border: 0;
+        }
     </style>
 </head>
+
 <body>
-<header>
-    <h1>Manager Dashboard</h1>
-    <p>Welcome, <?php echo $_SESSION['username']; ?> | <a href="../logout.php" style="color:#fff;">Logout</a></p>
-</header>
+    <div class="sidebar">
+        <a href="?section=home">Map Overview</a>
+        <a href="?section=monitor">Sensor Monitoring</a>
+        <a href="?section=alerts">Notifications</a>
+    </div>
+    <div class="main">
 
-<div class="container">
-    <h2>Sensor Map</h2>
-    <div id="map" class="map-container"></div>
+        <?php if ($section === 'home'): ?>
+            <h2>Sensor Map - Manolo Fortich</h2>
+            <?php foreach ($sensors as $sensor): ?>
+                <div class="card">
+                    <h3><?= htmlspecialchars($sensor['name']) ?> - <?= htmlspecialchars($sensor['status']) ?></h3>
+                    <div class="map-box">
+                        <iframe src="https://maps.google.com/maps?q=<?= $sensor['lat'] ?>,<?= $sensor['lng'] ?>&z=16&output=embed"></iframe>
+                    </div>
+                </div>
+            <?php endforeach; ?>
 
-    <h2>Manage Sensors</h2>
-    <table>
-        <tr>
-            <th>Sensor ID</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Location</th>
-            <th>Status</th>
-            <th>Temperature</th>
-            <th>Humidity</th>
-            <th>CO2</th>
-            <th>AQI</th>
-            <th>Raining</th>
-            <th>Recorded At</th>
-            <th>Actions</th>
-        </tr>
-        <?php while($row = $sensors_result->fetch_assoc()): ?>
-            <tr>
-                <td><?php echo $row['sensor_id']; ?></td>
-                <td><?php echo $row['sensor_name']; ?></td>
-                <td><?php echo $row['sensor_type']; ?></td>
-                <td><?php echo $row['location']; ?></td>
-                <td class="status-<?php echo strtolower($row['status']); ?>"><?php echo $row['status']; ?></td>
-                <td><?php echo $row['temperature']; ?></td>
-                <td><?php echo $row['humidity']; ?></td>
-                <td><?php echo $row['co2_level']; ?></td>
-                <td><?php echo $row['air_quality_index']; ?></td>
-                <td><?php echo $row['raining']; ?></td>
-                <td><?php echo $row['recorded_at']; ?></td>
-                <td>
-                    <button class="btn-edit" onclick="editSensor(<?php echo $row['sensor_id']; ?>)">Edit</button>
-                    <button class="btn-toggle" onclick="toggleSensor(<?php echo $row['sensor_id']; ?>)">Toggle</button>
-                    <button class="btn-delete" onclick="deleteSensor(<?php echo $row['sensor_id']; ?>)">Delete</button>
-                </td>
-            </tr>
-        <?php endwhile; ?>
-    </table>
-</div>
+        <?php elseif ($section === 'monitor'): ?>
+            <h2>Sensor Monitoring</h2>
+            <?php foreach ($sensors as $sensor): ?>
+                <div class="card">
+                    <h3><?= htmlspecialchars($sensor['name']) ?> - <?= htmlspecialchars($sensor['status']) ?></h3>
+                    <table>
+                        <tr>
+                            <th>Status</th>
+                            <th>Temperature</th>
+                            <th>Humidity</th>
+                            <th>Last Updated</th>
+                            <th>Power</th>
+                            <th>Actions</th>
+                        </tr>
+                        <tr>
+                            <td><?= htmlspecialchars($sensor['status']) ?></td>
+                            <td><?= is_numeric($sensor['temperature']) ? htmlspecialchars($sensor['temperature']) . '°C' : '--' ?></td>
+                            <td><?= is_numeric($sensor['humidity']) ? htmlspecialchars($sensor['humidity']) . '%' : '--' ?></td>
+                            <td><?= htmlspecialchars($sensor['last_updated']) ?></td>
+                            <td><?= htmlspecialchars($sensor['power']) ?></td>
+                            <td>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="id" value="<?= htmlspecialchars($sensor['id']) ?>" />
+                                    <button class="<?= $sensor['power'] === "ON" ? 'on' : 'off' ?>" name="toggle">Toggle Power</button>
+                                </form>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="id" value="<?= htmlspecialchars($sensor['id']) ?>" />
+                                    <button class="alert-btn" name="send_alert">Send Alert</button>
+                                </form>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="id" value="<?= htmlspecialchars($sensor['id']) ?>" />
+                                    <button class="malf-btn" name="malfunction"><?= $sensor['status'] === 'Active' ? 'Simulate Malfunction' : 'Fix Sensor' ?></button>
+                                </form>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            <?php endforeach; ?>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script>
-// Initialize map
-var map = L.map('map').setView([14.5995, 120.9842], 12); // Default: Manila
+        <?php elseif ($section === 'alerts'): ?>
+            <h2>Notifications</h2>
+            <?php if (!empty($alerts)): ?>
+                <ul>
+                    <?php foreach ($alerts as $note): ?>
+                        <li><?= htmlspecialchars($note) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else: ?>
+                <p>No alerts yet.</p>
+            <?php endif; ?>
+        <?php endif; ?>
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
-
-// Sensor markers
-<?php
-$sensors_query = $conn->query("SELECT sensor_id, sensor_name, location FROM sensors");
-while($sensor = $sensors_query->fetch_assoc()):
-    // Optional: parse location into lat/lng if stored as "lat,lng" or here just random around Manila for demo
-    $lat = 14.5995 + rand(-50,50)/1000;
-    $lng = 120.9842 + rand(-50,50)/1000;
-?>
-L.marker([<?php echo $lat; ?>, <?php echo $lng; ?>]).addTo(map)
-    .bindPopup("<b><?php echo $sensor['sensor_name']; ?></b><br>ID: <?php echo $sensor['sensor_id']; ?>");
-<?php endwhile; ?>
-
-// Dummy JS functions for managing sensors
-function editSensor(id){ alert("Edit sensor ID: "+id); }
-function toggleSensor(id){ alert("Toggle status sensor ID: "+id); }
-function deleteSensor(id){ 
-    if(confirm("Delete sensor ID: "+id+"?")) alert("Deleted sensor ID: "+id); 
-}
-</script>
+    </div>
 </body>
+
 </html>
